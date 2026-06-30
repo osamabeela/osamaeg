@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>EgyptAir – MRO Reliability Portal</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+
+
+
+
+
+</script>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader"><div class="spinner"></div><p>Loading…</p></div>
+
+<!-- RECOMMENDATION MODAL -->
+<div class="modal-overlay" id="rec-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2 id="modal-case-title">Case Details</h2>
+        <div id="modal-case-sub" style="font-size:12px;color:var(--gray4);margin-top:2px"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button class="btn-secondary" style="font-size:11px;padding:5px 12px;" onclick="openTimelineFromModal()">📜 Timeline</button>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+    </div>
+    <div class="modal-body">
+
+      <!-- Technical Support Analysis -->
+      <div class="form-group">
+        <label>Technical Support Analysis & Action Taken</label>
+        <textarea id="rec-tech-support" rows="4" placeholder="e.g. W.O. #91227337 is related to the subject event…"></textarea>
+      </div>
+
+      <!-- Technical Services Recommendation -->
+      <div class="form-group">
+        <label>Technical Services Recommendations</label>
+        <textarea id="rec-tech-services" rows="5" placeholder="e.g. Please note SN: YG008107-2 is affected by AMOS document…"></textarea>
+      </div>
+
+      <!-- Attachments -->
+      <div class="form-group">
+        <label>Attachments (File Paths)</label>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <input type="text" id="att-path-input" placeholder="Paste file path or name  e.g. C:\OIDA\ASD5167\WO_report.pdf" style="flex:1"/>
+          <button class="btn-secondary" onclick="addAttachment()">+ Add</button>
+        </div>
+        <div class="att-list" id="att-list"></div>
+        <div style="font-size:11px;color:var(--gray4);margin-top:6px">💡 Paste the full file path. Files stay on your disk — only the path is saved here.</div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:20px 0"/>
+
+      <!-- RCB Decision -->
+      <div class="form-group">
+        <label>RCB Decision</label>
+        <select id="rec-decision" onchange="toggleDecisionFields()">
+          <option value="">— Select Decision —</option>
+          <option value="closed">CLOSED</option>
+          <option value="open">OPEN (remains with same directorate)</option>
+          <option value="future">OPEN TO FUTURE MONTH</option>
+        </select>
+      </div>
+
+      <!-- CLOSED: note -->
+      <div id="decision-closed-fields" style="display:none">
+        <div class="form-group">
+          <label>Closing Note</label>
+          <textarea id="rec-closed-note" rows="3" placeholder="Brief note on closure…"></textarea>
+        </div>
+      </div>
+
+      <!-- FUTURE: month + directorate -->
+      <div id="decision-future-fields" style="display:none">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Carry-Over Month</label>
+            <input type="month" id="rec-carry-month"/>
+          </div>
+          <div class="form-group">
+            <label>Assign to Directorate</label>
+            <select id="rec-carry-dept">
+              <option value="">— Same as current —</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Note</label>
+          <textarea id="rec-carry-note" rows="2" placeholder="Reason for deferral or handover note…"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveRecommendation()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header class="portal-header">
+  <div class="header-left">
+    <img src="data:image/png;base64,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" alt="EgyptAir M&E" style="height:52px;width:auto;object-fit:contain;"/>
+    <div class="header-brand">
+      <div class="brand-main">MRO Reliability Portal</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <!-- Connection Status Indicator -->
+    <div id="conn-status" style="display:flex;align-items:center;gap:8px;background:var(--gray1);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;">
+      <span id="conn-dot" style="width:10px;height:10px;border-radius:50%;background:#1a7a3f;display:inline-block;transition:background 0.3s;"></span>
+      <span id="conn-label" style="color:var(--gray6);">Online</span>
+    </div>
+    <div class="header-right">
+      <div class="dept-name">Reliability Department</div>
+      <div class="dept-sub">Technical Services Directorate</div>
+      <div class="dept-code">EGME</div>
+    </div>
+    <div id="clock"></div>
+  </div>
+</header>
+
+<!-- BREADCRUMB -->
+<div id="breadcrumb">
+  <span class="bc-item" onclick="goHome()">🏠 Home</span>
+  <span class="bc-sep" id="bc2-sep" style="display:none">›</span>
+  <span class="bc-item" id="bc2" style="display:none" onclick="goMonths()"></span>
+  <span class="bc-sep" id="bc3-sep" style="display:none">›</span>
+  <span class="bc-item" id="bc3" style="display:none" onclick="goModules()"></span>
+  <span class="bc-sep" id="bc4-sep" style="display:none">›</span>
+  <span class="bc-current" id="bc4" style="display:none"></span>
+</div>
+
+<!-- SCREEN 1: YEAR -->
+<div id="screen-home" class="screen active">
+  <div class="screen-title">MRO Reliability Portal</div>
+  <div class="screen-sub">Search across all months and modules, or select a year to enter data.</div>
+
+  <div class="db-bar">
+    <span>🗄 Database: all data is stored on the central server. Use Backup/Restore to manage data files.</span>
+    <button class="btn-secondary" onclick="backupDB()">⬇ Backup</button>
+    <label style="margin:0"><button class="btn-secondary" onclick="document.getElementById('restore-input').click()">⬆ Restore</button><input type="file" id="restore-input" accept=".json" style="display:none" onchange="restoreDB(this)"/></label>
+    <button class="btn-secondary" onclick="openSettings()" style="margin-left:auto">⚙ Settings</button>
+  </div>
+
+  <!-- GLOBAL SEARCH -->
+  <div class="gsearch-box">
+    <h2>🔍 Global Search</h2>
+    <div class="gsearch-grid">
+
+      <div class="gsearch-field full">
+        <label>Description / Keyword</label>
+        <input type="text" id="gs-keyword" placeholder="e.g. starter, flap, refuse to start, hydraulic…"/>
+      </div>
+
+      <div class="gsearch-field">
+        <label>Case No.</label>
+        <input type="text" id="gs-caseno" placeholder="e.g. ASD 5167"/>
+      </div>
+
+      <div class="gsearch-field">
+        <label>Registration</label>
+        <input type="text" id="gs-reg" placeholder="e.g. SU-GET"/>
+      </div>
+
+      <div class="gsearch-field">
+        <label>ATA Chapter</label>
+        <input type="text" id="gs-ata" placeholder="e.g. 32"/>
+      </div>
+
+      <div class="gsearch-field">
+        <label>Department</label>
+        <input type="text" id="gs-dept" placeholder="e.g. B, C, Overhaul"/>
+      </div>
+
+      <div class="gsearch-field">
+        <label>Fleet Type</label>
+        <select id="gs-fleet">
+          <option value="">All Fleets</option>
+          <option>B787-9</option>
+          <option>B777-300</option>
+          <option>B737-800</option>
+          <option>A220-300</option>
+        </select>
+      </div>
+
+      <div class="gsearch-field">
+        <label>Status</label>
+        <select id="gs-status">
+          <option value="">All Statuses</option>
+          <option value="resolved">RECEIVED</option>
+          <option value="partial">PARTIAL</option>
+          <option value="deferred">POSTPONED</option>
+          <option value="unresolved">NOT RECEIVED</option>
+        </select>
+      </div>
+
+      <div class="gsearch-field">
+        <label>RCB Decision</label>
+        <select id="gs-decision">
+          <option value="">All Decisions</option>
+          <option value="closed">CLOSED</option>
+          <option value="open">OPEN</option>
+          <option value="future">CARRY OVER</option>
+        </select>
+      </div>
+
+      <div class="gsearch-field">
+        <label>Module</label>
+        <select id="gs-module">
+          <option value="">OIDA &amp; RCB</option>
+          <option value="oida">OIDA Only</option>
+          <option value="rcb">RCB Only</option>
+        </select>
+      </div>
+
+      <div class="gsearch-field">
+        <label>Date From</label>
+        <input type="text" id="gs-date-from" placeholder="e.g. JAN-26"/>
+      </div>
+
+      <div class="gsearch-field">
+        <label>Date To</label>
+        <input type="text" id="gs-date-to" placeholder="e.g. MAR-26"/>
+      </div>
+
+      <div class="gsearch-field full">
+        <label>Recommendation Text</label>
+        <input type="text" id="gs-rec" placeholder="Search in Technical Support or Technical Services recommendations…"/>
+      </div>
+
+    </div>
+    <div class="gsearch-actions">
+      <button class="btn-secondary" onclick="openTimelineScreen()">📜 Case Timeline</button>
+      <button class="btn-secondary" onclick="clearSearch()">✕ Clear</button>
+      <button class="btn-primary" onclick="runGlobalSearch()" style="padding:8px 24px;font-size:13px;">🔍 Search</button>
+    </div>
+
+    <!-- RESULTS -->
+    <div class="gsearch-results" id="gsearch-results" style="display:none">
+      <div class="gsr-header">
+        <div class="gsr-count">Found <strong id="gsr-count">0</strong> result(s)</div>
+        <button class="btn-secondary" onclick="exportSearchResults()" style="font-size:11px;padding:4px 12px;">⬇ Export</button>
+      </div>
+      <div class="gsr-table tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>Month</th>
+            <th>Module</th>
+            <th>Dept</th>
+            <th>Case No.</th>
+            <th>Fleet / Reg.</th>
+            <th>ATA</th>
+            <th>Description</th>
+            <th>Status</th>
+            <th>Decision</th>
+            <th>Tech Support Analysis</th>
+            <th>Tech Services Rec.</th>
+            <th>Date</th>
+            <th>Go To</th>
+          </tr></thead>
+          <tbody id="gsr-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-label">Select Year</div>
+  <div class="year-grid" id="year-grid"></div>
+</div>
+
+<!-- SCREEN 2: MONTH -->
+<div id="screen-months" class="screen">
+  <div class="screen-title" id="months-title">2026</div>
+  <div class="screen-sub">Select a month to open its modules.</div>
+  <div class="month-grid" id="month-grid"></div>
+</div>
+
+<!-- SCREEN 3: MODULES -->
+<div id="screen-modules" class="screen">
+  <div class="screen-title" id="modules-title">April 2026</div>
+  <div class="screen-sub">Select a module to open.</div>
+  <div class="module-grid">
+    <div class="module-card oida" onclick="openModule('oida')">
+      <div class="module-icon">✈️</div>
+      <div class="module-title">OIDA</div>
+      <div class="module-desc">Operational Interruption &amp; Defect Analysis — RCB Meeting Report</div>
+      <span class="module-tag tag-active">Active</span>
+    </div>
+    <div class="module-card" style="border-top:4px solid var(--accent);cursor:pointer;" onclick="openModule('rcb')">
+      <div class="module-icon">📋</div>
+      <div class="module-title">RCB</div>
+      <div class="module-desc">Review Control Board — Monthly Cases Status &amp; Analysis</div>
+      <span class="module-tag tag-active" style="background:var(--accent)">Active</span>
+    </div>
+    <div class="module-card" style="border-top:4px solid #1a7a3f;cursor:pointer;" onclick="openModule('san')">
+      <div class="module-icon">⚠️</div>
+      <div class="module-title">SAN</div>
+      <div class="module-desc">System Alert Notice — track fleet alerts, PIREPS, rates &amp; RCB actions.</div>
+      <span class="module-tag tag-active" style="background:#1a7a3f">Active</span>
+    </div>
+    <div class="module-card soon"><div class="module-icon">📊</div><div class="module-title">Reliability Report</div><div class="module-desc">Monthly reliability statistics and trend analysis.</div><span class="module-tag tag-soon">Coming Soon</span></div>
+    <div class="module-card soon"><div class="module-icon">🔧</div><div class="module-title">MEL Tracker</div><div class="module-desc">Minimum Equipment List deferrals and status tracking.</div><span class="module-tag tag-soon">Coming Soon</span></div>
+    <div class="module-card soon"><div class="module-icon">📋</div><div class="module-title">Audit Findings</div><div class="module-desc">Internal audit findings and corrective action follow-up.</div><span class="module-tag tag-soon">Coming Soon</span></div>
+  </div>
+</div>
+
+<!-- SCREEN 4: OIDA DASHBOARD -->
+<div id="screen-oida" class="screen">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+    <div>
+      <div class="screen-title" id="oida-title">OIDA Dashboard</div>
+      <div class="screen-sub" style="margin-bottom:0">O.I.D.A – RCB Meeting · Operational Interruption &amp; Defect Analysis</div>
+    </div>
+    <button class="reupload-btn" onclick="triggerUpload()">📂 Upload / Change File</button>
+  </div>
+
+  <label id="upload-zone">
+    <input type="file" id="file-input" accept=".xls,.xlsx,.xlsm"/>
+    <div class="upload-icon-big">📂</div>
+    <h3>Upload Monthly OIDA Excel File</h3>
+    <p>Click here or drag and drop your .xls / .xlsx file</p>
+    <div class="upload-hint">Expected columns: Ser · Dir./Dept. · Case No. · Fleet TYPE · Reg. No. · ATA · Description · Response · Date Received</div>
+  </label>
+
+  <div id="oida-content" style="display:none">
+    <div id="carry-banner" class="carry-banner" style="display:none">
+      📋 <strong id="carry-count"></strong> case(s) carried over from previous months are included below.
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;flex-wrap:wrap;">
+      <div style="background:var(--gray1);border:1px solid var(--border);border-radius:20px;padding:6px 18px;font-size:13px;color:var(--gray5);">Sheet: <strong id="period-label" style="color:var(--accent)">—</strong></div>
+      <div id="debug-panel" style="display:none;background:#fffbe6;border:1px solid #ddc060;border-radius:6px;padding:6px 14px;font-size:11px;color:#b8860b;">⚠ Detected columns: <span id="debug-cols"></span></div>
+    </div>
+
+    <div id="sheet-tabs-wrap" style="display:none;margin-bottom:24px;">
+      <div class="sec-label">Sheets</div>
+      <div id="sheet-tabs" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+    </div>
+
+    <div class="sec-label">Summary</div>
+    <div class="kpi-row">
+      <div class="kpi-card k-total"><div class="kpi-lbl">Total Cases</div><div class="kpi-val" id="kpi-total">0</div><div class="kpi-pct">All logged items</div></div>
+      <div class="kpi-card k-resolved"><div class="kpi-lbl">RECEIVED</div><div class="kpi-val" id="kpi-resolved">0</div><div class="kpi-pct" id="pct-resolved">—</div></div>
+      <div class="kpi-card k-partial"><div class="kpi-lbl">PARTIAL</div><div class="kpi-val" id="kpi-partial">0</div><div class="kpi-pct" id="pct-partial">—</div></div>
+      <div class="kpi-card k-deferred"><div class="kpi-lbl">POSTPONED</div><div class="kpi-val" id="kpi-deferred">0</div><div class="kpi-pct" id="pct-deferred">—</div></div>
+      <div class="kpi-card k-open"><div class="kpi-lbl">NOT RECEIVED</div><div class="kpi-val" id="kpi-unresolved">0</div><div class="kpi-pct" id="pct-unresolved">—</div></div>
+    </div>
+
+    <div class="two-col">
+      <div class="chart-card"><h3>Cases by Department</h3><div class="bar-list" id="dept-bars"></div></div>
+      <div class="chart-card"><h3>Status Breakdown</h3>
+        <div class="donut-wrap">
+          <svg id="donut-svg" width="120" height="120" viewBox="0 0 120 120" style="flex-shrink:0">
+            <circle cx="60" cy="60" r="48" fill="none" stroke="#f0f0f0" stroke-width="18"/>
+            <g id="donut-arcs"></g>
+          </svg>
+          <div class="donut-legend" id="donut-legend"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-card" style="margin-bottom:24px"><h3>Cases by Fleet Type</h3><div class="bar-list" id="fleet-bars"></div></div>
+
+    <div class="sec-label">O.I.D.A – RCB Cases Status</div>
+    <div class="chart-card rcb-section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <p style="font-size:12px;color:var(--gray4);margin-bottom:6px">OPEN = not yet resolved · RECEIVED = responded · Combined depts (A&amp;B) counted separately. Click any case tag to add Recommendation &amp; RCB Decision.</p>
+          <div class="drag-hint">⠿ Drag the handle to reorder departments</div>
+        </div>
+        <button class="btn-primary" id="export-rcb-btn">⬇ Export RCB CSV</button>
+      </div>
+      <div class="tbl-wrap">
+        <table id="rcb-table">
+          <thead><tr>
+            <th style="min-width:190px">Department</th>
+            <th style="width:100px">Status</th>
+            <th style="width:60px;text-align:center">Count</th>
+            <th>Case Numbers</th>
+          </tr></thead>
+        </table>
+      </div>
+    </div>
+
+    <div class="sec-label">All Cases</div>
+    <div class="chart-card">
+      <div class="filter-bar">
+        <label>Dept</label><select id="filter-dept"><option value="">All</option></select>
+        <label>Status</label>
+        <select id="filter-status">
+          <option value="">All</option>
+          <option value="resolved">RECEIVED</option>
+          <option value="partial">PARTIAL</option>
+          <option value="deferred">POSTPONED</option>
+          <option value="unresolved">NOT RECEIVED</option>
+        </select>
+        <label>Fleet</label><select id="filter-fleet"><option value="">All</option></select>
+        <input type="text" id="filter-search" placeholder="🔍 Search…" style="min-width:180px"/>
+        <button class="btn-primary" id="export-all-btn" style="margin-left:auto">⬇ Export CSV</button>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Dept</th><th>Case No.</th><th>Fleet</th><th>Reg.</th><th>ATA</th><th>Description</th><th>Status</th><th>Decision</th><th>Date</th><th>Action</th></tr></thead>
+          <tbody id="case-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN 5: RCB DASHBOARD -->
+<div id="screen-rcb" class="screen">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+    <div>
+      <div class="screen-title" id="rcb-title">RCB Dashboard</div>
+      <div class="screen-sub" style="margin-bottom:0">Reliability Control Board · Monthly Cases Status &amp; Analysis</div>
+    </div>
+    <button class="reupload-btn" onclick="triggerRCBUpload()">📂 Upload / Change File</button>
+  </div>
+
+  <label id="rcb-upload-zone" style="border:2px dashed var(--border);border-radius:var(--r);padding:40px 32px;text-align:center;cursor:pointer;background:var(--gray1);transition:all .2s;margin-bottom:32px;display:block;">
+    <input type="file" id="rcb-file-input" accept=".xls,.xlsx,.xlsm"/>
+    <div style="font-size:40px;margin-bottom:12px">📂</div>
+    <h3 style="font-size:17px;font-weight:600;color:var(--gray6);margin-bottom:6px">Upload Monthly RCB Excel File</h3>
+    <p style="font-size:13px;color:var(--gray4)">Click here or drag and drop your .xls / .xlsx file</p>
+    <div style="margin-top:12px;font-size:11px;color:var(--gray4);background:var(--white);border-radius:6px;padding:8px 14px;border:1px solid var(--border);display:inline-block">Expected columns: Ser · Dir./Dept. · Case No. · Fleet TYPE · Reg. No. · ATA · Description · Response · Date Received</div>
+  </label>
+
+  <div id="rcb-content" style="display:none">
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;flex-wrap:wrap;">
+      <div style="background:var(--gray1);border:1px solid var(--border);border-radius:20px;padding:6px 18px;font-size:13px;color:var(--gray5);">Sheet: <strong id="rcb-period-label" style="color:var(--accent)">—</strong></div>
+      <div id="rcb-debug-panel" style="display:none;background:#fffbe6;border:1px solid #ddc060;border-radius:6px;padding:6px 14px;font-size:11px;color:#b8860b;">⚠ Detected columns: <span id="rcb-debug-cols"></span></div>
+    </div>
+
+    <div id="rcb-sheet-tabs-wrap" style="display:none;margin-bottom:24px;">
+      <div class="sec-label">Sheets</div>
+      <div id="rcb-sheet-tabs" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="sec-label">Summary</div>
+    <div class="kpi-row">
+      <div class="kpi-card k-total"><div class="kpi-lbl">Total Cases</div><div class="kpi-val" id="rcb-kpi-total">0</div><div class="kpi-pct">All logged items</div></div>
+      <div class="kpi-card k-resolved"><div class="kpi-lbl">RECEIVED</div><div class="kpi-val" id="rcb-kpi-resolved">0</div><div class="kpi-pct" id="rcb-pct-resolved">—</div></div>
+      <div class="kpi-card k-partial"><div class="kpi-lbl">PARTIAL</div><div class="kpi-val" id="rcb-kpi-partial">0</div><div class="kpi-pct" id="rcb-pct-partial">—</div></div>
+      <div class="kpi-card k-deferred"><div class="kpi-lbl">POSTPONED</div><div class="kpi-val" id="rcb-kpi-deferred">0</div><div class="kpi-pct" id="rcb-pct-deferred">—</div></div>
+      <div class="kpi-card k-open"><div class="kpi-lbl">NOT RECEIVED</div><div class="kpi-val" id="rcb-kpi-unresolved">0</div><div class="kpi-pct" id="rcb-pct-unresolved">—</div></div>
+    </div>
+
+    <!-- Charts -->
+    <div class="two-col">
+      <div class="chart-card"><h3>Cases by Department</h3><div class="bar-list" id="rcb-dept-bars"></div></div>
+      <div class="chart-card"><h3>Status Breakdown</h3>
+        <div class="donut-wrap">
+          <svg width="120" height="120" viewBox="0 0 120 120" style="flex-shrink:0">
+            <circle cx="60" cy="60" r="48" fill="none" stroke="#f0f0f0" stroke-width="18"/>
+            <g id="rcb-donut-arcs"></g>
+          </svg>
+          <div class="donut-legend" id="rcb-donut-legend"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-card" style="margin-bottom:24px"><h3>Cases by Fleet Type</h3><div class="bar-list" id="rcb-fleet-bars"></div></div>
+
+    <!-- RCB Status Table -->
+    <div class="sec-label">RCB Cases Status</div>
+    <div class="chart-card rcb-section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <p style="font-size:12px;color:var(--gray4);margin-bottom:6px">OPEN = not yet resolved · RECEIVED = responded · Combined depts (A&amp;B) counted separately. Click any case tag to add Recommendation &amp; RCB Decision.</p>
+          <div class="drag-hint">⠿ Drag the handle to reorder departments</div>
+        </div>
+        <button class="btn-primary" id="rcb-export-rcb-btn">⬇ Export CSV</button>
+      </div>
+      <div class="tbl-wrap">
+        <table id="rcb-status-table">
+          <thead><tr>
+            <th style="min-width:190px">Department</th>
+            <th style="width:100px">Status</th>
+            <th style="width:60px;text-align:center">Count</th>
+            <th>Case Numbers</th>
+          </tr></thead>
+        </table>
+      </div>
+    </div>
+
+    <!-- All Cases -->
+    <div class="sec-label">All Cases</div>
+    <div class="chart-card">
+      <div class="filter-bar">
+        <label>Dept</label><select id="rcb-filter-dept"><option value="">All</option></select>
+        <label>Status</label>
+        <select id="rcb-filter-status">
+          <option value="">All</option>
+          <option value="resolved">RECEIVED</option>
+          <option value="partial">PARTIAL</option>
+          <option value="deferred">POSTPONED</option>
+          <option value="unresolved">NOT RECEIVED</option>
+        </select>
+        <label>Fleet</label><select id="rcb-filter-fleet"><option value="">All</option></select>
+        <input type="text" id="rcb-filter-search" placeholder="🔍 Search…" style="min-width:180px"/>
+        <button class="btn-primary" id="rcb-export-all-btn" style="margin-left:auto">⬇ Export CSV</button>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Dept</th><th>Case No.</th><th>Fleet</th><th>Reg.</th><th>ATA</th><th>Description</th><th>Status</th><th>Decision</th><th>Date</th><th>Action</th></tr></thead>
+          <tbody id="rcb-case-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- SCREEN 5: RCB DASHBOARD -->
+
+
+<!-- SCREEN: CASE TIMELINE -->
+<div id="screen-timeline" class="screen">
+  <div class="screen-title">📜 Case Timeline</div>
+  <div class="screen-sub">Search any Case No. to see its full history across all months and modules.</div>
+
+  <div class="tl-search-box">
+    <input type="text" id="tl-search-input" placeholder="Enter Case No. e.g. ASD 5167" onkeydown="if(event.key==='Enter')searchTimeline()"/>
+    <button class="btn-primary" onclick="searchTimeline()">🔍 Search</button>
+  </div>
+
+  <div id="tl-results"></div>
+</div>
+
+
+<!-- ══════════════════════════════
+     SETTINGS MODAL
+══════════════════════════════ -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-header">
+      <h2>⚙ Settings — Customize Dropdowns</h2>
+      <button class="modal-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--gray4);margin-bottom:20px">Add, edit or remove values for any dropdown list used across the portal.</p>
+
+      <div id="settings-tabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:12px;"></div>
+      <div id="settings-tab-content"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeSettings()">Close</button>
+      <button class="btn-primary" onclick="saveSettings()">💾 Save All</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     SAN MODULE SCREEN
+══════════════════════════════ -->
+<div id="screen-san" class="screen">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+    <div>
+      <div class="screen-title" id="san-screen-title">SAN — System Alert Notice</div>
+      <div class="screen-sub" style="margin-bottom:0">Track fleet system alerts, PIREP rates and RCB actions.</div>
+    </div>
+  </div>
+
+  <!-- Global SAN Search (above months) -->
+  <div class="gsearch-box" style="margin-bottom:28px;">
+    <h2>🔍 SAN Search</h2>
+    <div class="gsearch-grid">
+      <div class="gsearch-field"><label>SAN No.</label><input type="text" id="san-gs-no" placeholder="e.g. SAN 4125"/></div>
+      <div class="gsearch-field"><label>A/C Type</label><select id="san-gs-type"><option value="">All</option></select></div>
+      <div class="gsearch-field"><label>ATA</label><select id="san-gs-ata"><option value="">All</option></select></div>
+      <div class="gsearch-field"><label>ETOPS</label>
+        <select id="san-gs-etops"><option value="">All</option><option value="yes">YES</option><option value="no">NO</option></select>
+      </div>
+      <div class="gsearch-field"><label>TS Action</label>
+        <select id="san-gs-action"><option value="">All</option><option value="open">OPEN</option><option value="closed">CLOSED</option></select>
+      </div>
+      <div class="gsearch-field"><label>RCB Status</label>
+        <select id="san-gs-rcb"><option value="">All</option><option value="sent">Sent to RCB</option><option value="closed_rcb">Closed in RCB</option><option value="none">Not sent</option></select>
+      </div>
+      <div class="gsearch-field"><label>Rate ≥</label><input type="number" id="san-gs-rate" placeholder="e.g. 1.5" step="0.01"/></div>
+      <div class="gsearch-field"><label>Alert ≥</label><input type="number" id="san-gs-alert" placeholder="e.g. 0.5" step="0.01"/></div>
+    </div>
+    <div class="gsearch-actions">
+      <button class="btn-secondary" onclick="clearSanSearch()">✕ Clear</button>
+      <button class="btn-primary" onclick="runSanSearch()">🔍 Search All Months</button>
+    </div>
+    <div id="san-gs-results" style="display:none;margin-top:20px">
+      <div class="gsr-header">
+        <div class="gsr-count">Found <strong id="san-gs-count">0</strong> SAN(s)</div>
+        <button class="btn-secondary" onclick="exportSanResults(sanGsResults,'SAN_Search')" style="font-size:11px;padding:4px 12px;">⬇ Export Excel</button>
+      </div>
+      <div class="tbl-wrap" id="san-gs-table-wrap"></div>
+    </div>
+  </div>
+
+  <!-- Month SANs view -->
+  <div class="sec-label" id="san-month-label">SANs — <span id="san-month-name"></span></div>
+
+  <!-- Inner month search -->
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+    <input type="text" id="san-inner-search" placeholder="🔍 Search in this month…" style="border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-size:13px;font-family:inherit;outline:none;min-width:220px;" oninput="filterMonthSans()"/>
+    <button class="btn-primary" onclick="openSanForm(null)" style="margin-left:auto">+ Create SAN</button>
+    <button class="btn-secondary" onclick="exportSanResults(currentMonthSans,'SAN_'+sanMonthKey())">⬇ Export Excel</button>
+  </div>
+
+  <div id="san-previous-alert-banner" style="display:none" class="carry-banner" style="background:#fff3b0;border-color:#ddc060;color:#b8860b;">
+    ⚠ <strong>SAN PREVIOUS ALERT:</strong> <span id="san-prev-text"></span>
+  </div>
+
+  <div id="san-month-table-wrap" class="tbl-wrap"></div>
+</div>
+
+<!-- SAN FORM MODAL -->
+<div class="modal-overlay" id="san-form-modal">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <h2 id="san-form-title">Create SAN</h2>
+      <button class="modal-close" onclick="closeSanForm()">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Previous Alert Warning -->
+      <div id="san-form-prev-alert" style="display:none;background:#fff3b0;border:1px solid #ddc060;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#b8860b;">
+        ⚠ <strong>SAN PREVIOUS ALERT</strong> — A SAN with the same ATA and A/C Type was created in the last 12 months: <span id="san-form-prev-text"></span>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>A/C Type *</label>
+          <select id="sf-actype" onchange="checkSanPrevAlert()"><option value="">— Select —</option></select>
+        </div>
+        <div class="form-group">
+          <label>ATA *</label>
+          <select id="sf-ata" onchange="checkSanPrevAlert()"><option value="">— Select —</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Delivery Date</label>
+          <input type="date" id="sf-delivery"/>
+        </div>
+        <div class="form-group">
+          <label>Target Date</label>
+          <input type="date" id="sf-target"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>ETOPS</label>
+          <select id="sf-etops" onchange="handleEtops()">
+            <option value="no">NO</option>
+            <option value="yes">YES</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>SAN Number</label>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;color:var(--accent)">SAN</span>
+            <input type="text" id="sf-sanno" placeholder="4125" style="flex:1"/>
+          </div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>No. of PIREPs</label>
+          <input type="number" id="sf-pireps" min="0" placeholder="0"/>
+        </div>
+        <div class="form-group">
+          <label>Rate</label>
+          <input type="number" id="sf-rate" step="0.01" min="0" placeholder="0.00"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Alert</label>
+          <input type="number" id="sf-alert" step="0.01" min="0" placeholder="0.00"/>
+        </div>
+        <div class="form-group">
+          <label>Technical Services Action</label>
+          <select id="sf-tsaction">
+            <option value="open">OPEN</option>
+            <option value="closed">CLOSED</option>
+          </select>
+        </div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:18px 0"/>
+
+      <!-- Send to RCB -->
+      <div class="form-group">
+        <label>Send to RCB Meeting</label>
+        <select id="sf-rcb-module">
+          <option value="">— Not sent to RCB —</option>
+          <option value="oida">OIDA</option>
+          <option value="rcb">RCB</option>
+        </select>
+      </div>
+      <div id="sf-rcb-month-wrap" style="display:none">
+        <div class="form-group">
+          <label>RCB Month</label>
+          <input type="month" id="sf-rcb-month"/>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeSanForm()">Cancel</button>
+      <button class="btn-danger" id="san-delete-btn" style="display:none" onclick="deleteSan()">🗑 Delete</button>
+      <button class="btn-primary" onclick="saveSan()">💾 Save SAN</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
